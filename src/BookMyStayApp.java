@@ -1,38 +1,50 @@
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.*;
 
 /**
  * BookMyStayApp
  *
- * <p>Use Case 5 (UC5): Booking Request Queue</p>
- * Demonstrates how booking requests are collected using a Queue
- * to preserve arrival order before allocation occurs.
+ * <p>Use Case 6 (UC6): Reservation Confirmation & Room Allocation</p>
+ * Demonstrates how booking requests are processed safely,
+ * ensuring unique room assignments and consistent inventory updates.
  *
  * @author YourName
  * @version 1.0
  */
-
 public class BookMyStayApp {
 
     public static void main(String[] args) {
 
+        // Initialize inventory
+        InventoryService inventory = new InventoryService();
+
         // Initialize booking request queue
-        BookingRequestQueue requestQueue = new BookingRequestQueue();
+        Queue<Reservation> requestQueue = new LinkedList<>();
 
-        // Guests submit booking requests
-        requestQueue.addRequest(new Reservation("Alice", "Single Room"));
-        requestQueue.addRequest(new Reservation("Bob", "Suite Room"));
-        requestQueue.addRequest(new Reservation("Charlie", "Double Room"));
+        // Sample booking requests
+        requestQueue.offer(new Reservation("Alice", "Single Room"));
+        requestQueue.offer(new Reservation("Bob", "Suite Room"));
+        requestQueue.offer(new Reservation("Charlie", "Single Room"));
 
-        // Display queued requests
-        System.out.println("===== Booking Request Queue =====\n");
-        requestQueue.displayQueue();
+        // Initialize booking service
+        BookingService bookingService = new BookingService(inventory);
+
+        // Process booking requests in FIFO order
+        System.out.println("===== Processing Booking Requests =====\n");
+
+        while (!requestQueue.isEmpty()) {
+            Reservation request = requestQueue.poll();
+            bookingService.processReservation(request);
+        }
+
+        // Display final inventory
+        System.out.println("\n===== Updated Inventory =====");
+        inventory.displayInventory();
     }
 }
 
 
 /**
- * Reservation represents a guest booking request.
+ * Reservation represents a booking request from a guest.
  */
 class Reservation {
 
@@ -51,44 +63,103 @@ class Reservation {
     public String getRoomType() {
         return roomType;
     }
+}
 
-    public void displayReservation() {
-        System.out.println("Guest: " + guestName + " | Requested Room: " + roomType);
+
+/**
+ * InventoryService manages centralized room availability.
+ */
+class InventoryService {
+
+    private Map<String, Integer> availability;
+
+    public InventoryService() {
+        availability = new HashMap<>();
+        availability.put("Single Room", 2);
+        availability.put("Double Room", 1);
+        availability.put("Suite Room", 1);
+    }
+
+    public int getAvailability(String roomType) {
+        return availability.getOrDefault(roomType, 0);
+    }
+
+    public void decrementRoom(String roomType) {
+        availability.put(roomType, availability.get(roomType) - 1);
+    }
+
+    public void displayInventory() {
+        for (String type : availability.keySet()) {
+            System.out.println(type + " -> Available: " + availability.get(type));
+        }
     }
 }
 
 
 /**
- * BookingRequestQueue manages incoming booking requests using FIFO ordering.
+ * BookingService processes reservations and performs room allocation.
  */
-class BookingRequestQueue {
+class BookingService {
 
-    private Queue<Reservation> bookingQueue;
+    private InventoryService inventory;
 
-    public BookingRequestQueue() {
-        bookingQueue = new LinkedList<>();
+    // Tracks all allocated room IDs to prevent duplicates
+    private Set<String> allocatedRoomIds;
+
+    // Maps room type to assigned room IDs
+    private Map<String, Set<String>> roomAllocation;
+
+    public BookingService(InventoryService inventory) {
+        this.inventory = inventory;
+        this.allocatedRoomIds = new HashSet<>();
+        this.roomAllocation = new HashMap<>();
     }
 
     /**
-     * Adds a booking request to the queue.
+     * Processes a reservation request.
      */
-    public void addRequest(Reservation reservation) {
-        bookingQueue.offer(reservation);
-        System.out.println("Booking request received from " + reservation.getGuestName());
-    }
+    public void processReservation(Reservation reservation) {
 
-    /**
-     * Displays all queued booking requests in arrival order.
-     */
-    public void displayQueue() {
+        String roomType = reservation.getRoomType();
+        String guest = reservation.getGuestName();
 
-        if (bookingQueue.isEmpty()) {
-            System.out.println("No booking requests in queue.");
+        // Check availability
+        if (inventory.getAvailability(roomType) <= 0) {
+            System.out.println("Reservation failed for " + guest +
+                    " (No available " + roomType + ")");
             return;
         }
 
-        for (Reservation reservation : bookingQueue) {
-            reservation.displayReservation();
+        // Generate unique room ID
+        String roomId = generateRoomId(roomType);
+
+        // Ensure uniqueness
+        while (allocatedRoomIds.contains(roomId)) {
+            roomId = generateRoomId(roomType);
         }
+
+        // Record allocation
+        allocatedRoomIds.add(roomId);
+
+        roomAllocation
+                .computeIfAbsent(roomType, k -> new HashSet<>())
+                .add(roomId);
+
+        // Update inventory immediately
+        inventory.decrementRoom(roomType);
+
+        // Confirm reservation
+        System.out.println("Reservation confirmed for " + guest +
+                " | Room Type: " + roomType +
+                " | Assigned Room ID: " + roomId);
+    }
+
+    /**
+     * Generates a unique room ID.
+     */
+    private String generateRoomId(String roomType) {
+        String prefix = roomType.substring(0, 2).toUpperCase();
+        int randomNumber = (int) (Math.random() * 900 + 100);
+        return prefix + "-" + randomNumber;
     }
 }
